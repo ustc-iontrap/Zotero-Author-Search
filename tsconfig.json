@@ -1,0 +1,11 @@
+{
+  "extends": "zotero-types/entries/sandbox/",
+  "include": ["src", "typings"],
+  "exclude": ["build", "addon"],
+  "compilerOptions": {
+    "target": "es2015",
+    "lib": ["es2015", "dom"],
+    "strict": false,
+    "skipLibCheck": true
+  }
+}

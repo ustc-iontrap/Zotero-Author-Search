@@ -2,6 +2,11 @@
 
 Lightweight Zotero 7 add-on that searches your library for other items written by the same authors as the currently selected reference. Results can be reviewed in a dialog and optionally saved into per-author collections.
 
+### What's New in V1.1
+- **Interactive Links**: Added clickable arrow icons (↗) to search results and generated notes that link directly to the Zotero item (`zotero://select/...`).
+- **Copy to Clipboard**: A new "Copy" button formats the search results (Title, Authors, Journal, Year) and copies them to the system clipboard.
+- **Add Note**: A new "Add Note" button creates a child note under the original item, saving the search results as a formatted HTML list with clickable links.
+
 ### Features
 - Adds a `Search Authors` menu entry on item right-click (three matching modes: Flexible, Strict, Surname).
 - Scans selected item creators, finds related items in the same library, and extracts affiliations from the `Extra` field when possible.

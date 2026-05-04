@@ -3,11 +3,17 @@
 /* eslint-disable */
 // @ts-nocheck
 export type FluentMessageId =
+  | 'add-note-button'
+  | 'add-note-error'
+  | 'add-note-success'
   | 'affiliation-column'
   | 'author-column'
   | 'author-search-window-title'
   | 'close-button'
   | 'collection-saved'
+  | 'copy-button'
+  | 'copy-error'
+  | 'copy-success'
   | 'double-click-to-close'
   | 'invalid-item'
   | 'items-found'
@@ -20,6 +26,7 @@ export type FluentMessageId =
   | 'no-items-selected'
   | 'no-results-found'
   | 'no-results-to-save'
+  | 'open-item-link'
   | 'prefs-table-detail'
   | 'prefs-table-title'
   | 'prefs-title'

@@ -1,8 +1,9 @@
+import { ClipboardHelper } from "zotero-plugin-toolkit";
 import { getString } from "../utils/locale";
 
 declare const Zotero: any;
 declare const ztoolkit: any;
-declare const Services: any;
+declare const addon: any;
 
 export enum MatchingMode {
   Strict = "Strict",
@@ -16,55 +17,76 @@ export interface AuthorSearchResult {
   affiliations: string[];
 }
 
+interface FormattedResult {
+  title: string;
+  authors: string;
+  journal: string;
+  year: string;
+  details: string;
+  uri: string;
+  plainText: string;
+  htmlText: string;
+}
+
 export class AuthorSearchFactory {
   static async searchAuthors(mode: MatchingMode = MatchingMode.Flexible) {
     try {
       ztoolkit.log("=== 开始作者搜索 ===");
 
-      // 1. 获取当前选中的条目
       const pane = Zotero.getActiveZoteroPane();
       const selectedItems = pane.getSelectedItems();
 
       if (!selectedItems || selectedItems.length !== 1) {
-        Zotero.alert(null, "作者搜索", "请选择一个条目进行搜索");
+        Zotero.alert(
+          null,
+          getString("search-authors-title"),
+          getString("no-items-selected"),
+        );
         return;
       }
 
       const item = selectedItems[0];
       ztoolkit.log("选中的条目:", item.getField("title"));
 
-      // 检查是否是常规条目
       if (!item.isRegularItem()) {
-        Zotero.alert(null, "作者搜索", "请选择一个有效的文献条目");
+        Zotero.alert(
+          null,
+          getString("search-authors-title"),
+          getString("invalid-item"),
+        );
         return;
       }
 
-      // 2. 获取作者列表
       const creators = item.getCreators();
       if (creators.length === 0) {
-        Zotero.alert(null, "作者搜索", "该条目没有作者信息");
+        Zotero.alert(
+          null,
+          getString("search-authors-title"),
+          getString("no-authors-found"),
+        );
         return;
       }
 
       ztoolkit.log(`发现 ${creators.length} 个作者:`, creators);
 
-      // 3. 显示进度窗口
-      const progressWin = new ztoolkit.ProgressWindow("搜索作者", {
-        closeOnClick: false,
-        closeTime: -1,
-      });
+      const progressWin = new ztoolkit.ProgressWindow(
+        getString("search-authors-title"),
+        {
+          closeOnClick: false,
+          closeTime: -1,
+        },
+      );
 
       const progressLine = progressWin.createLine({
-        text: "正在搜索相关作者的文献...",
+        text: getString("searching"),
         type: "default",
         progress: 0,
       });
 
       progressWin.show();
 
-      // 4. 开始搜索
-      const results = [];
-      const foundItemIds = [];
+      const results: AuthorSearchResult[] = [];
+      const foundItemIds: number[] = [];
 
       for (let i = 0; i < creators.length; i++) {
         const creator = creators[i];
@@ -75,7 +97,6 @@ export class AuthorSearchFactory {
 
         const authorResults = await this.searchByAuthor(item, creator, mode);
 
-        // 合并结果，避免重复
         for (const result of authorResults) {
           if (foundItemIds.indexOf(result.item.id) === -1) {
             foundItemIds.push(result.item.id);
@@ -89,7 +110,9 @@ export class AuthorSearchFactory {
       }
 
       progressLine.changeLine({
-        text: `搜索完成！找到 ${results.length} 个相关条目`,
+        text: `${getString("search-complete")}！${getString("items-found", {
+          args: { count: results.length },
+        })}`,
         progress: 100,
       });
 
@@ -97,15 +120,22 @@ export class AuthorSearchFactory {
 
       ztoolkit.log(`=== 搜索完成，共找到 ${results.length} 个结果 ===`);
 
-      // 5. 显示结果
       if (results.length > 0) {
-        this.showResults(results);
+        this.showResults(item, results);
       } else {
-        Zotero.alert(null, "搜索结果", "未找到相关条目");
+        Zotero.alert(
+          null,
+          getString("search-results-title"),
+          getString("no-results-found"),
+        );
       }
     } catch (error) {
       ztoolkit.log("搜索过程中发生错误:", error);
-      Zotero.alert(null, "错误", `搜索失败: ${error.message}`);
+      Zotero.alert(
+        null,
+        "错误",
+        `搜索失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -122,7 +152,6 @@ export class AuthorSearchFactory {
 
       ztoolkit.log(`开始搜索作者: ${lastName} ${creator.firstName || ""}`);
 
-      // 创建搜索条件
       const search = new Zotero.Search();
       search.libraryID = originalItem.libraryID;
       search.addCondition("creator", "contains", lastName);
@@ -130,26 +159,23 @@ export class AuthorSearchFactory {
       const itemIds = await search.search();
       ztoolkit.log(`找到 ${itemIds.length} 个可能相关的条目`);
 
-      // 处理搜索结果
       for (const itemId of itemIds) {
-        if (itemId === originalItem.id) continue; // 跳过原始条目
+        if (itemId === originalItem.id) continue;
 
         const item = await Zotero.Items.getAsync(itemId);
         if (!item || !item.isRegularItem()) continue;
 
         const itemCreators = item.getCreators();
-        const matchedAuthors = [];
-        const affiliations = [];
+        const matchedAuthors: string[] = [];
+        const affiliations: string[] = [];
 
-        // 检查是否有匹配的作者
         for (const itemCreator of itemCreators) {
           if (this.isAuthorMatch(creator, itemCreator, mode)) {
             const authorName =
               `${itemCreator.lastName} ${itemCreator.firstName || ""}`.trim();
             matchedAuthors.push(authorName);
 
-            // 尝试提取机构信息
-            const affiliation = this.extractAffiliation(item, itemCreator);
+            const affiliation = this.extractAffiliation(item);
             if (affiliation) {
               affiliations.push(affiliation);
             }
@@ -190,9 +216,6 @@ export class AuthorSearchFactory {
     const firstName2 = (author2.firstName || "").toLowerCase().trim();
 
     if (mode === MatchingMode.Strict) {
-      if (firstName1 && firstName2) {
-        return firstName1 === firstName2;
-      }
       return firstName1 === firstName2;
     }
 
@@ -208,11 +231,7 @@ export class AuthorSearchFactory {
     return true;
   }
 
-
-  /**
-   * 从条目中提取机构信息
-   */
-  private static extractAffiliation(item: any, creator: any): string {
+  private static extractAffiliation(item: any): string {
     try {
       const extra = item.getField("extra") as string;
       if (!extra) return "";
@@ -229,41 +248,56 @@ export class AuthorSearchFactory {
           return line.trim();
         }
       }
-
-      return "";
-    } catch (error) {
-      return "";
+    } catch (_error) {
+      ztoolkit.log("提取机构信息失败");
     }
+
+    return "";
   }
 
-  /**
-   * 显示搜索结果
-   */
-  private static showResults(results: AuthorSearchResult[]) {
+  private static showResults(originalItem: any, results: AuthorSearchResult[]) {
     ztoolkit.log("准备显示搜索结果");
 
-    // 使用ztoolkit Dialog创建更好的界面
+    addon.data.dialog?.window?.close();
+
+    const sortedResults = this.sortResultsByDate([...results]);
+    const formattedResults = sortedResults.map((result) =>
+      this.formatResult(result),
+    );
+
     const dialogHelper = new ztoolkit.Dialog(10, 1)
       .addCell(0, 0, {
         tag: "style",
         properties: {
           innerHTML: `
             .search-results-container {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
               padding: 0;
               margin: 0;
+              height: 100%;
+              display: flex;
+              flex-direction: column;
             }
             .results-header {
               display: flex;
               justify-content: space-between;
               align-items: center;
+              gap: 16px;
               padding: 12px 16px;
               background: #f5f5f5;
               border-bottom: 1px solid #ddd;
-              font-weight: bold;
               font-size: 14px;
             }
+            .results-header-title {
+              font-weight: 600;
+            }
+            .header-actions {
+              display: flex;
+              flex-wrap: wrap;
+              justify-content: flex-end;
+            }
             .results-list {
+              flex: 1;
               max-height: 400px;
               overflow-y: auto;
               border: 1px solid #ddd;
@@ -273,11 +307,15 @@ export class AuthorSearchFactory {
               margin: 0;
             }
             .result-item {
-              padding: 8px 0;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              gap: 10px;
+              padding: 10px 0;
               border-bottom: 1px solid #f0f0f0;
               cursor: pointer;
               font-size: 13px;
-              line-height: 1.4;
+              line-height: 1.5;
               list-style-type: decimal;
               margin-left: 20px;
             }
@@ -287,17 +325,17 @@ export class AuthorSearchFactory {
             .result-item:last-child {
               border-bottom: none;
             }
-            .item-content {
-              display: inline;
+            .result-main {
+              flex: 1;
+              min-width: 0;
             }
             .item-title {
-              font-weight: normal;
-              color: #333;
+              color: #222;
+              font-weight: 600;
               margin-right: 8px;
             }
             .item-authors {
               color: #0066cc;
-              font-weight: bold;
               margin-right: 8px;
             }
             .item-publication {
@@ -310,7 +348,14 @@ export class AuthorSearchFactory {
               font-size: 12px;
             }
             .item-volume {
-              font-weight: bold;
+              font-weight: 600;
+            }
+            .item-link {
+              flex: 0 0 auto;
+              text-decoration: none;
+              font-size: 15px;
+              line-height: 1;
+              padding-top: 2px;
             }
             .dialog-button {
               padding: 6px 16px;
@@ -345,24 +390,58 @@ export class AuthorSearchFactory {
             children: [
               {
                 tag: "span",
+                className: "results-header-title",
                 properties: {
-                  innerHTML: `作者搜索结果 - 找到 ${results.length} 个相关条目`,
+                  textContent: `${getString("search-results-title")} - ${getString("items-found", {
+                    args: { count: formattedResults.length },
+                  })}`,
                 },
               },
               {
                 tag: "div",
+                className: "header-actions",
                 children: [
                   {
                     tag: "button",
-                    className: "dialog-button primary",
+                    className: "dialog-button",
                     properties: {
-                      innerHTML: "保存为集合",
+                      innerHTML: getString("copy-button"),
                     },
                     listeners: [
                       {
                         type: "click",
                         listener: () => {
-                          this.saveAsCollection(results);
+                          void this.copyResultsToClipboard(formattedResults);
+                        },
+                      },
+                    ],
+                  },
+                  {
+                    tag: "button",
+                    className: "dialog-button",
+                    properties: {
+                      innerHTML: getString("add-note-button"),
+                    },
+                    listeners: [
+                      {
+                        type: "click",
+                        listener: () => {
+                          void this.addNote(originalItem, formattedResults);
+                        },
+                      },
+                    ],
+                  },
+                  {
+                    tag: "button",
+                    className: "dialog-button primary",
+                    properties: {
+                      innerHTML: getString("save-as-collection"),
+                    },
+                    listeners: [
+                      {
+                        type: "click",
+                        listener: () => {
+                          void this.saveAsCollection(originalItem, sortedResults);
                           dialogHelper.window?.close();
                         },
                       },
@@ -372,7 +451,7 @@ export class AuthorSearchFactory {
                     tag: "button",
                     className: "dialog-button",
                     properties: {
-                      innerHTML: "关闭",
+                      innerHTML: getString("close-button"),
                     },
                     listeners: [
                       {
@@ -388,161 +467,338 @@ export class AuthorSearchFactory {
           {
             tag: "ol",
             className: "results-list",
-            id: "results-list",
-            children: this.sortResultsByDate(results).map((result, index) => {
-              try {
-                const title = result.item.getField("title") || "无标题";
-                const authors = result.matchedAuthors.join(", ");
-                const year = this.extractYear(
-                  result.item.getField("date") || "",
-                );
-                const journal = this.getJournalAbbreviation(
-                  result.item.getField("publicationTitle") || "",
-                );
-                const volume = result.item.getField("volume") || "";
-                const issue = result.item.getField("issue") || "";
-                const pages = result.item.getField("pages") || "";
+            children: formattedResults.map((formattedResult, index) => {
+              const result = sortedResults[index];
 
-                // 构建卷期年份信息
-                let detailsInfo = "";
-                if (volume) {
-                  detailsInfo += `<span class="item-volume">${volume}</span>`;
-                  if (issue) {
-                    detailsInfo += `, ${issue}`;
-                  }
-                  if (year) {
-                    detailsInfo += ` (${year})`;
-                  }
-                } else if (year) {
-                  detailsInfo = `(${year})`;
-                }
-
-                return {
-                  tag: "li",
-                  className: "result-item",
-                  attributes: {
-                    "data-item-id": result.item.id.toString(),
-                    title: `点击选中条目: ${title}`,
-                  },
-                  children: [
-                    {
-                      tag: "span",
-                      className: "item-content",
-                      properties: {
-                        innerHTML: `<span class="item-title">${title}</span> <span class="item-authors">${authors}</span> <span class="item-publication">${journal || ""}</span> <span class="item-details">${detailsInfo || ""}</span>`,
+              return {
+                tag: "li",
+                className: "result-item",
+                attributes: {
+                  "data-item-id": result.item.id.toString(),
+                  title: `${getString("open-item-link")}: ${formattedResult.title}`,
+                },
+                children: [
+                  {
+                    tag: "div",
+                    className: "result-main",
+                    children: [
+                      {
+                        tag: "span",
+                        className: "item-title",
+                        properties: {
+                          textContent: formattedResult.title,
+                        },
                       },
-                    },
-                  ],
-                };
-              } catch (error) {
-                ztoolkit.log(`处理第 ${index + 1} 个结果时出错:`, error);
-                return {
-                  tag: "li",
-                  className: "result-item",
-                  properties: {
-                    innerHTML: `[无法显示条目信息]`,
+                      {
+                        tag: "span",
+                        className: "item-authors",
+                        properties: {
+                          textContent: formattedResult.authors,
+                        },
+                      },
+                      {
+                        tag: "span",
+                        className: "item-publication",
+                        properties: {
+                          textContent: formattedResult.journal,
+                        },
+                      },
+                      {
+                        tag: "span",
+                        className: "item-details",
+                        properties: {
+                          innerHTML: formattedResult.details,
+                        },
+                      },
+                    ],
                   },
-                };
-              }
+                  {
+                    tag: "a",
+                    className: "item-link",
+                    properties: {
+                      href: formattedResult.uri,
+                      textContent: "↗",
+                    },
+                    attributes: {
+                      title: `${getString("open-item-link")}: ${formattedResult.title}`,
+                    },
+                    listeners: [
+                      {
+                        type: "click",
+                        listener: (event: Event) => event.stopPropagation(),
+                      },
+                    ],
+                  },
+                ],
+              };
             }),
           },
         ],
       })
       .open(
-        "作者搜索结果",
+        getString("author-search-window-title"),
         {
           resizable: true,
           centerscreen: true,
-        },
-        {
           noDialogMode: true,
-          styleOptions: {
-            width: "800px",
-            height: "550px",
-          },
+          width: 860,
+          height: 560,
         },
       );
 
-    // 添加点击事件
-    setTimeout(() => {
-      if (dialogHelper.window) {
-        const resultItems = dialogHelper.window.document.querySelectorAll(
-          ".result-item[data-item-id]",
-        );
-        resultItems.forEach((item: any) => {
-          item.addEventListener("click", () => {
-            const itemId = parseInt(item.getAttribute("data-item-id"));
-            if (itemId) {
-              // 选中条目
-              const pane = Zotero.getActiveZoteroPane();
-              pane.selectItem(itemId);
+    addon.data.dialog = dialogHelper;
 
-              // 高亮选中的行
-              resultItems.forEach((r: any) => (r.style.background = ""));
-              item.style.background = "#e6f3ff";
-            }
-          });
-        });
+    setTimeout(() => {
+      if (!dialogHelper.window) {
+        return;
       }
+
+      const resultItems = dialogHelper.window.document.querySelectorAll(
+        ".result-item[data-item-id]",
+      );
+
+      resultItems.forEach((item: any) => {
+        item.addEventListener("click", () => {
+          const itemId = parseInt(item.getAttribute("data-item-id"), 10);
+          if (!itemId) {
+            return;
+          }
+
+          const pane = Zotero.getActiveZoteroPane();
+          pane.selectItem(itemId);
+
+          resultItems.forEach((row: any) => (row.style.background = ""));
+          item.style.background = "#e6f3ff";
+        });
+      });
     }, 100);
   }
 
-  /**
-   * 截断文本
-   */
-  private static truncateText(text: string, maxLength: number): string {
-    if (!text || text.length <= maxLength) return text || "";
-    return text.substring(0, maxLength - 3) + "...";
+  private static async copyResultsToClipboard(results: FormattedResult[]) {
+    if (!results.length) {
+      Zotero.alert(
+        null,
+        getString("copy-button"),
+        getString("no-results-to-save"),
+      );
+      return;
+    }
+
+    try {
+      const plainText = results
+        .map((result, index) => `${index + 1}. ${result.plainText}`)
+        .join("\n");
+      const html = `<ol>${results
+        .map((result) => `<li>${result.htmlText}</li>`)
+        .join("")}</ol>`;
+
+      new ClipboardHelper()
+        .addText(plainText, "text/unicode")
+        .addText(html, "text/html")
+        .copy();
+
+      Zotero.alert(
+        null,
+        getString("copy-button"),
+        getString("copy-success", { args: { count: results.length } }),
+      );
+    } catch (error) {
+      ztoolkit.log("复制到剪贴板失败:", error);
+      Zotero.alert(
+        null,
+        getString("copy-button"),
+        getString("copy-error"),
+      );
+    }
   }
 
-  /**
-   * 从日期字符串中提取年份
-   */
+  private static async addNote(originalItem: any, results: FormattedResult[]) {
+    if (!results.length) {
+      Zotero.alert(
+        null,
+        getString("add-note-button"),
+        getString("no-results-to-save"),
+      );
+      return;
+    }
+
+    try {
+      const note = new Zotero.Item("note");
+      note.libraryID = originalItem.libraryID;
+      note.parentID = originalItem.id;
+      note.setNote(this.buildNoteHtml(originalItem, results));
+      await note.saveTx();
+
+      Zotero.alert(
+        null,
+        getString("add-note-button"),
+        getString("add-note-success", { args: { count: results.length } }),
+      );
+    } catch (error) {
+      ztoolkit.log("创建笔记失败:", error);
+      Zotero.alert(
+        null,
+        getString("add-note-button"),
+        getString("add-note-error"),
+      );
+    }
+  }
+
+  private static buildNoteHtml(
+    originalItem: any,
+    results: FormattedResult[],
+  ): string {
+    const sourceTitle = this.escapeHtml(
+      originalItem.getField("title") || "Untitled",
+    );
+    const now = new Date().toLocaleString();
+
+    return `
+      <h1>${this.escapeHtml(getString("search-results-title"))}</h1>
+      <p><strong>${this.escapeHtml(getString("title-column"))}:</strong> ${sourceTitle}</p>
+      <p><strong>Date:</strong> ${this.escapeHtml(now)}</p>
+      <ol>
+        ${results.map((result) => `<li>${result.htmlText}</li>`).join("")}
+      </ol>
+    `.trim();
+  }
+
+  private static formatResult(result: AuthorSearchResult): FormattedResult {
+    const title = result.item.getField("title") || "无标题";
+    const authors = this.getItemAuthors(result.item) || result.matchedAuthors.join(", ");
+    const year = this.extractYear(result.item.getField("date") || "");
+    const journal = this.getDisplayPublication(result.item);
+    const details = this.buildDetailsInfo(result.item, year);
+    const uri = this.buildItemSelectURI(result.item);
+    const plainText = [title, authors, journal, year].filter(Boolean).join(" - ");
+    const htmlParts = [
+      `<a href="${this.escapeHtml(uri)}">↗</a>`,
+      `<strong>${this.escapeHtml(title)}</strong>`,
+      authors ? this.escapeHtml(authors) : "",
+      journal ? `<em>${this.escapeHtml(journal)}</em>` : "",
+      year ? `(${this.escapeHtml(year)})` : "",
+    ].filter(Boolean);
+
+    return {
+      title,
+      authors,
+      journal,
+      year,
+      details,
+      uri,
+      plainText,
+      htmlText: htmlParts.join(" - "),
+    };
+  }
+
+  private static buildItemSelectURI(item: any): string {
+    const library = Zotero.Libraries.get(item.libraryID);
+
+    if (library?.libraryType === "user") {
+      return `zotero://select/library/items/${item.key}`;
+    }
+
+    if (library?.libraryType === "group") {
+      return `zotero://select/groups/${library.libraryTypeID}/items/${item.key}`;
+    }
+
+    return `zotero://select/${Zotero.URI.getItemPath(item)}`;
+  }
+
+  private static getItemAuthors(item: any): string {
+    const creators = item.getCreators().filter((creator: any) => creator);
+    return creators
+      .map((creator: any) => this.formatCreatorName(creator))
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  private static formatCreatorName(creator: any): string {
+    if (creator.name) {
+      return creator.name;
+    }
+
+    return `${creator.lastName || ""} ${creator.firstName || ""}`.trim();
+  }
+
+  private static getDisplayPublication(item: any): string {
+    return this.getJournalAbbreviation(
+      item.getField("publicationTitle") ||
+        item.getField("proceedingsTitle") ||
+        item.getField("bookTitle") ||
+        "",
+    );
+  }
+
+  private static buildDetailsInfo(item: any, year: string): string {
+    const volume = item.getField("volume") || "";
+    const issue = item.getField("issue") || "";
+
+    if (volume) {
+      let detailsInfo = `<span class="item-volume">${this.escapeHtml(volume)}</span>`;
+      if (issue) {
+        detailsInfo += `, ${this.escapeHtml(issue)}`;
+      }
+      if (year) {
+        detailsInfo += ` (${this.escapeHtml(year)})`;
+      }
+      return detailsInfo;
+    }
+
+    if (year) {
+      return `(${this.escapeHtml(year)})`;
+    }
+
+    return "";
+  }
+
+  private static escapeHtml(text: string): string {
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   private static extractYear(dateStr: string): string {
     if (!dateStr) return "";
     const match = dateStr.match(/\b(19|20)\d{2}\b/);
     return match ? match[0] : "";
   }
 
-  /**
-   * 保存搜索结果为集合
-   */
-  private static async saveAsCollection(results: AuthorSearchResult[]) {
+  private static async saveAsCollection(
+    originalItem: any,
+    results: AuthorSearchResult[],
+  ) {
     try {
       ztoolkit.log("=== 开始保存集合 ===");
 
       if (results.length === 0) {
-        Zotero.alert(null, "提示", "没有可保存的搜索结果");
+        Zotero.alert(
+          null,
+          getString("save-as-collection"),
+          getString("no-results-to-save"),
+        );
         return;
       }
 
-      // 获取原始条目信息用于命名
-      const pane = Zotero.getActiveZoteroPane();
-      const selectedItems = pane.getSelectedItems();
       let collectionName = `作者搜索结果 (${results.length}条)`;
-
-      if (selectedItems && selectedItems.length > 0) {
-        const creators = selectedItems[0].getCreators();
-        if (creators.length > 0) {
-          const authorNames = creators
-            .slice(0, 2)
-            .map((c) => c.lastName)
-            .join(", ");
-          collectionName = `[作者搜索] ${authorNames}${creators.length > 2 ? " 等" : ""} (${results.length}条)`;
-        }
+      const creators = originalItem.getCreators();
+      if (creators.length > 0) {
+        const authorNames = creators
+          .slice(0, 2)
+          .map((creator: any) => creator.lastName || creator.name)
+          .filter(Boolean)
+          .join(", ");
+        collectionName = `[作者搜索] ${authorNames}${creators.length > 2 ? " 等" : ""} (${results.length}条)`;
       }
 
       ztoolkit.log("准备创建集合:", collectionName);
 
-      // 获取当前库ID
-      const libraryID =
-        selectedItems && selectedItems[0]
-          ? selectedItems[0].libraryID
-          : Zotero.Libraries.userLibraryID;
-
+      const libraryID = originalItem.libraryID || Zotero.Libraries.userLibraryID;
       ztoolkit.log("使用库ID:", libraryID);
 
-      // 确保@SearchAuthor父集合存在
       const PREF_BASE = "extensions.zotero.authorSearch.parentCollectionKey.";
       let parentKey = Zotero.Prefs.get(`${PREF_BASE}${libraryID}`, true);
       let parentCollection = null;
@@ -551,14 +807,17 @@ export class AuthorSearchFactory {
         const allCollections =
           Zotero.Collections.getByLibrary(libraryID, true) || [];
         parentCollection =
-          allCollections.find((c) => c && c.key === parentKey) || null;
+          allCollections.find((collection: any) => collection?.key === parentKey) ||
+          null;
       }
 
       if (!parentCollection) {
         const allCollections =
           Zotero.Collections.getByLibrary(libraryID, true) || [];
         parentCollection =
-          allCollections.find((c) => c && c.name === "@SearchAuthor") || null;
+          allCollections.find(
+            (collection: any) => collection && collection.name === "@SearchAuthor",
+          ) || null;
       }
 
       if (!parentCollection) {
@@ -574,32 +833,34 @@ export class AuthorSearchFactory {
         ztoolkit.log("已创建@SearchAuthor父集合，ID:", parentCollection.id);
       }
 
-      // 按作者分组结果
-      const resultsByAuthor = new Map();
-
+      const resultsByAuthor = new Map<string, AuthorSearchResult[]>();
       for (const result of results) {
         for (const author of result.matchedAuthors) {
           if (!resultsByAuthor.has(author)) {
             resultsByAuthor.set(author, []);
           }
-          resultsByAuthor.get(author).push(result);
+          resultsByAuthor.get(author)?.push(result);
         }
       }
 
       ztoolkit.log("按作者分组，共", resultsByAuthor.size, "个作者");
 
-      const createdCollections = [];
+      const createdCollections: Array<{
+        authorName: string;
+        collectionID: number;
+        itemCount: number;
+      }> = [];
 
-      // 为每个作者创建子集合
       for (const [authorName, authorResults] of resultsByAuthor) {
         ztoolkit.log(`为作者 "${authorName}" 创建集合...`);
 
-        // 检查是否已存在该作者的集合
         const existingCollections =
           Zotero.Collections.getByLibrary(libraryID, true) || [];
         let authorCollection = existingCollections.find(
-          (c) =>
-            c && c.name === authorName && c.parentID === parentCollection.id,
+          (collection: any) =>
+            collection &&
+            collection.name === authorName &&
+            collection.parentID === parentCollection.id,
         );
 
         if (!authorCollection) {
@@ -619,8 +880,7 @@ export class AuthorSearchFactory {
           );
         }
 
-        // 获取该作者的所有条目ID（去重）
-        const uniqueItems = new Set();
+        const uniqueItems = new Set<number>();
         for (const result of authorResults) {
           uniqueItems.add(result.item.id);
         }
@@ -628,7 +888,6 @@ export class AuthorSearchFactory {
 
         ztoolkit.log(`为作者 "${authorName}" 添加 ${itemIDs.length} 个条目`);
 
-        // 添加条目到作者集合
         for (const itemID of itemIDs) {
           const item = await Zotero.Items.getAsync(itemID);
           if (item) {
@@ -644,21 +903,18 @@ export class AuthorSearchFactory {
         });
       }
 
-      ztoolkit.log("所有作者集合已创建完成");
-
-      // 创建成功消息
       const summary = createdCollections
-        .map((c) => `${c.authorName}: ${c.itemCount}个条目`)
+        .map((collection) => `${collection.authorName}: ${collection.itemCount}个条目`)
         .join("\n");
 
       Zotero.alert(
         null,
-        "保存成功",
+        getString("collection-saved"),
         `已在"@SearchAuthor"下创建 ${createdCollections.length} 个作者集合:\n\n${summary}`,
       );
 
-      // 尝试选中父集合
       try {
+        const pane = Zotero.getActiveZoteroPane();
         setTimeout(() => {
           pane.collectionsView.selectCollection(parentCollection.id);
           ztoolkit.log("已选中@SearchAuthor父集合");
@@ -670,63 +926,46 @@ export class AuthorSearchFactory {
       ztoolkit.log("=== 集合保存完成 ===");
     } catch (error) {
       ztoolkit.log("保存集合时发生错误:", error);
-      ztoolkit.log("错误详情:", error.stack);
       Zotero.alert(
         null,
-        "保存失败",
-        `保存集合时出现错误:\n${error.message}\n\n请查看控制台获取详细信息`,
+        getString("save-as-collection"),
+        `${getString("save-collection-error")}\n${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
 
-  /**
-   * 按日期倒序排列搜索结果
-   */
   private static sortResultsByDate(
     results: AuthorSearchResult[],
   ): AuthorSearchResult[] {
     return results.sort((a, b) => {
       const dateA = this.parseDate(a.item.getField("date") || "");
       const dateB = this.parseDate(b.item.getField("date") || "");
-
-      // 倒序排列 (最新的在前)
       return dateB.getTime() - dateA.getTime();
     });
   }
 
-  /**
-   * 解析日期字符串
-   */
   private static parseDate(dateStr: string): Date {
-    if (!dateStr) return new Date(0); // 没有日期的放到最后
+    if (!dateStr) return new Date(0);
 
-    // 尝试提取年份
     const yearMatch = dateStr.match(/\b(19|20)\d{2}\b/);
     if (yearMatch) {
-      const year = parseInt(yearMatch[0]);
-      // 尝试提取月份
+      const year = parseInt(yearMatch[0], 10);
       const monthMatch = dateStr.match(/\b(0?[1-9]|1[0-2])\b/);
-      const month = monthMatch ? parseInt(monthMatch[0]) - 1 : 0; // 月份从0开始
-      // 尝试提取日期
+      const month = monthMatch ? parseInt(monthMatch[0], 10) - 1 : 0;
       const dayMatch = dateStr.match(/\b(0?[1-9]|[12][0-9]|3[01])\b/);
-      const day = dayMatch ? parseInt(dayMatch[0]) : 1;
+      const day = dayMatch ? parseInt(dayMatch[0], 10) : 1;
 
       return new Date(year, month, day);
     }
 
-    // 如果无法解析，尝试直接使用Date构造函数
     const parsed = new Date(dateStr);
     return isNaN(parsed.getTime()) ? new Date(0) : parsed;
   }
 
-  /**
-   * 获取期刊缩写
-   */
   private static getJournalAbbreviation(fullJournalName: string): string {
     if (!fullJournalName) return "";
 
     const abbreviations: { [key: string]: string } = {
-      // Nature 系列
       Nature: "Nature",
       "Nature Machine Intelligence": "Nat. Mach. Intell.",
       "Nature Communications": "Nat. Commun.",
@@ -737,14 +976,10 @@ export class AuthorSearchFactory {
       "Nature Materials": "Nat. Mater.",
       "Nature Medicine": "Nat. Med.",
       "Nature Genetics": "Nat. Genet.",
-
-      // Science 系列
       Science: "Science",
       "Science Advances": "Sci. Adv.",
       "Science Translational Medicine": "Sci. Transl. Med.",
       "Science Immunology": "Sci. Immunol.",
-
-      // Physical Review 系列
       "Physical Review Letters": "Phys. Rev. Lett.",
       "Physical Review A": "Phys. Rev. A",
       "Physical Review B": "Phys. Rev. B",
@@ -753,8 +988,6 @@ export class AuthorSearchFactory {
       "Physical Review E": "Phys. Rev. E",
       "Physical Review Applied": "Phys. Rev. Appl.",
       "Physical Review Research": "Phys. Rev. Res.",
-
-      // IEEE 系列
       "IEEE Transactions on Pattern Analysis and Machine Intelligence":
         "IEEE Trans. PAMI",
       "IEEE Transactions on Information Theory": "IEEE Trans. Inf. Theory",
@@ -766,8 +999,6 @@ export class AuthorSearchFactory {
       "IEEE Transactions on Automatic Control": "IEEE Trans. Autom. Control",
       "IEEE Transactions on Computers": "IEEE Trans. Comput.",
       "IEEE Transactions on Software Engineering": "IEEE Trans. Softw. Eng.",
-
-      // 计算机科学会议
       "Neural Information Processing Systems": "NeurIPS",
       "International Conference on Machine Learning": "ICML",
       "Conference on Computer Vision and Pattern Recognition": "CVPR",
@@ -780,8 +1011,6 @@ export class AuthorSearchFactory {
       "International Conference on Learning Representations": "ICLR",
       "AAAI Conference on Artificial Intelligence": "AAAI",
       "International Joint Conference on Artificial Intelligence": "IJCAI",
-
-      // 生物医学期刊
       Cell: "Cell",
       "The Lancet": "Lancet",
       "New England Journal of Medicine": "N. Engl. J. Med.",
@@ -790,46 +1019,32 @@ export class AuthorSearchFactory {
       "Nature Reviews Molecular Cell Biology": "Nat. Rev. Mol. Cell Biol.",
       "Nature Reviews Genetics": "Nat. Rev. Genet.",
       "Annual Review of Biochemistry": "Annu. Rev. Biochem.",
-
-      // 化学期刊
       "Journal of the American Chemical Society": "J. Am. Chem. Soc.",
       "Angewandte Chemie International Edition": "Angew. Chem. Int. Ed.",
       "Chemical Reviews": "Chem. Rev.",
       "Accounts of Chemical Research": "Acc. Chem. Res.",
       "Journal of Physical Chemistry": "J. Phys. Chem.",
-
-      // 材料科学
       "Advanced Materials": "Adv. Mater.",
       "Advanced Functional Materials": "Adv. Funct. Mater.",
       "Journal of Materials Chemistry": "J. Mater. Chem.",
       "Chemistry of Materials": "Chem. Mater.",
-
-      // 物理期刊
       "Journal of Physics": "J. Phys.",
       "Applied Physics Letters": "Appl. Phys. Lett.",
       "Review of Scientific Instruments": "Rev. Sci. Instrum.",
-
-      // 数学期刊
       "Journal of Mathematical Physics": "J. Math. Phys.",
       "Communications in Mathematical Physics": "Commun. Math. Phys.",
       "Annals of Mathematics": "Ann. Math.",
-
-      // 其他常见期刊
       "PLoS ONE": "PLoS ONE",
       "Scientific Reports": "Sci. Rep.",
       "Optics Express": "Opt. Express",
       "Optics Letters": "Opt. Lett.",
     };
 
-    // 直接匹配
     if (abbreviations[fullJournalName]) {
       return abbreviations[fullJournalName];
     }
 
-    // 模糊匹配和自动缩写
     const lowerJournal = fullJournalName.toLowerCase();
-
-    // 查找部分匹配
     for (const [full, abbr] of Object.entries(abbreviations)) {
       if (
         lowerJournal.includes(full.toLowerCase()) ||
@@ -839,17 +1054,12 @@ export class AuthorSearchFactory {
       }
     }
 
-    // 简单自动缩写规则
     return this.autoAbbreviate(fullJournalName);
   }
 
-  /**
-   * 自动缩写期刊名称
-   */
   private static autoAbbreviate(journalName: string): string {
     if (!journalName) return "";
 
-    // 常见词汇缩写映射
     const wordAbbreviations: { [key: string]: string } = {
       journal: "J.",
       international: "Int.",
@@ -895,15 +1105,14 @@ export class AuthorSearchFactory {
       university: "Univ.",
     };
 
-    // 分词并缩写
     const words = journalName.split(/\s+/);
     const abbreviated = words.map((word) => {
       const lowerWord = word.toLowerCase().replace(/[^\w]/g, "");
       if (wordAbbreviations[lowerWord]) {
         return wordAbbreviations[lowerWord];
-      } else if (word.length > 4) {
-        // 长单词保留首字母大写+点
-        return word.charAt(0).toUpperCase() + ".";
+      }
+      if (word.length > 4) {
+        return `${word.charAt(0).toUpperCase()}.`;
       }
       return word;
     });

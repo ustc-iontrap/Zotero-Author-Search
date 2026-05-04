@@ -1,24 +1,27 @@
-# Compiled class file
-*.class
+# Dependencies
+node_modules/
 
-# Log file
+# Build and scaffold output
+.scaffold/
+build/
+dist/
+
+# TypeScript incremental cache
+*.tsbuildinfo
+
+# Logs
 *.log
+npm-debug.log*
 
-# BlueJ files
-*.ctxt
+# Test coverage
+coverage/
 
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
+# Environment files
+.env
+.env.*
 
-# Package Files #
-*.jar
-*.war
-*.nar
-*.ear
-*.zip
-*.tar.gz
-*.rar
-
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-replay_pid*
+# macOS / editor cruft
+.DS_Store
+**/.DS_Store
+.vscode/
+.idea/

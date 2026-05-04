@@ -20,6 +20,8 @@ export interface AuthorSearchResult {
 interface FormattedResult {
   title: string;
   authors: string;
+  authorsHtml: string;
+  matchedAuthors: string;
   journal: string;
   year: string;
   details: string;
@@ -295,6 +297,7 @@ export class AuthorSearchFactory {
               display: flex;
               flex-wrap: wrap;
               justify-content: flex-end;
+              gap: 12px;
             }
             .results-list {
               flex: 1;
@@ -307,10 +310,6 @@ export class AuthorSearchFactory {
               margin: 0;
             }
             .result-item {
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-              gap: 10px;
               padding: 10px 0;
               border-bottom: 1px solid #f0f0f0;
               cursor: pointer;
@@ -326,40 +325,50 @@ export class AuthorSearchFactory {
               border-bottom: none;
             }
             .result-main {
-              flex: 1;
-              min-width: 0;
+              display: inline;
+              white-space: normal;
+              overflow-wrap: anywhere;
             }
             .item-title {
-              color: #222;
-              font-weight: 600;
-              margin-right: 8px;
+              color: #1f2328;
+              font-weight: 500;
             }
             .item-authors {
-              color: #0066cc;
-              margin-right: 8px;
+              color: #4b5563;
+            }
+            .item-author-highlight {
+              color: #0969da;
+              font-weight: 600;
             }
             .item-publication {
-              color: #666;
+              color: #5f6b7a;
               font-style: italic;
-              margin-right: 8px;
             }
             .item-details {
-              color: #888;
+              color: #4b5563;
               font-size: 12px;
             }
             .item-volume {
               font-weight: 600;
             }
             .item-link {
-              flex: 0 0 auto;
+              display: inline-block;
+              color: #0969da;
               text-decoration: none;
-              font-size: 15px;
+              font-size: 14px;
               line-height: 1;
-              padding-top: 2px;
+              opacity: 0.9;
+              margin-left: 6px;
+              vertical-align: baseline;
+            }
+            .item-separator {
+              color: #666;
+            }
+            .result-item:hover .item-link {
+              opacity: 1;
             }
             .dialog-button {
               padding: 6px 16px;
-              margin-left: 8px;
               border: 1px solid #ccc;
               background: #fff;
               cursor: pointer;
@@ -469,6 +478,99 @@ export class AuthorSearchFactory {
             className: "results-list",
             children: formattedResults.map((formattedResult, index) => {
               const result = sortedResults[index];
+              const hasPublication = Boolean(formattedResult.journal);
+              const hasDetails = Boolean(formattedResult.details);
+              const hasPublicationInfo = hasPublication || hasDetails;
+              const hasAuthors = Boolean(formattedResult.authorsHtml);
+              const resultMainChildren: any[] = [];
+
+              if (formattedResult.title) {
+                resultMainChildren.push({
+                  tag: "span",
+                  className: "item-title",
+                  properties: {
+                    textContent: formattedResult.title,
+                  },
+                });
+              }
+
+              if (hasAuthors) {
+                if (resultMainChildren.length > 0) {
+                  resultMainChildren.push({
+                    tag: "span",
+                    className: "item-separator",
+                    properties: {
+                      textContent: ". ",
+                    },
+                  });
+                }
+
+                resultMainChildren.push({
+                  tag: "span",
+                  className: "item-authors",
+                  properties: {
+                    innerHTML: formattedResult.authorsHtml,
+                  },
+                });
+              }
+
+              if (hasPublicationInfo) {
+                resultMainChildren.push({
+                  tag: "span",
+                  className: "item-separator",
+                  properties: {
+                    textContent: ". ",
+                  },
+                });
+              }
+
+              if (hasPublication) {
+                resultMainChildren.push({
+                  tag: "span",
+                  className: "item-publication",
+                  properties: {
+                    textContent: formattedResult.journal,
+                  },
+                });
+              }
+
+              if (hasPublication && hasDetails) {
+                resultMainChildren.push({
+                  tag: "span",
+                  className: "item-separator",
+                  properties: {
+                    textContent: " ",
+                  },
+                });
+              }
+
+              if (hasDetails) {
+                resultMainChildren.push({
+                  tag: "span",
+                  className: "item-details",
+                  properties: {
+                    innerHTML: formattedResult.details,
+                  },
+                });
+              }
+
+              resultMainChildren.push({
+                tag: "a",
+                className: "item-link",
+                properties: {
+                  href: formattedResult.uri,
+                  textContent: "↗",
+                },
+                attributes: {
+                  title: `${getString("open-item-link")}: ${formattedResult.title}`,
+                },
+                listeners: [
+                  {
+                    type: "click",
+                    listener: (event: Event) => event.stopPropagation(),
+                  },
+                ],
+              });
 
               return {
                 tag: "li",
@@ -479,55 +581,9 @@ export class AuthorSearchFactory {
                 },
                 children: [
                   {
-                    tag: "div",
+                    tag: "span",
                     className: "result-main",
-                    children: [
-                      {
-                        tag: "span",
-                        className: "item-title",
-                        properties: {
-                          textContent: formattedResult.title,
-                        },
-                      },
-                      {
-                        tag: "span",
-                        className: "item-authors",
-                        properties: {
-                          textContent: formattedResult.authors,
-                        },
-                      },
-                      {
-                        tag: "span",
-                        className: "item-publication",
-                        properties: {
-                          textContent: formattedResult.journal,
-                        },
-                      },
-                      {
-                        tag: "span",
-                        className: "item-details",
-                        properties: {
-                          innerHTML: formattedResult.details,
-                        },
-                      },
-                    ],
-                  },
-                  {
-                    tag: "a",
-                    className: "item-link",
-                    properties: {
-                      href: formattedResult.uri,
-                      textContent: "↗",
-                    },
-                    attributes: {
-                      title: `${getString("open-item-link")}: ${formattedResult.title}`,
-                    },
-                    listeners: [
-                      {
-                        type: "click",
-                        listener: (event: Event) => event.stopPropagation(),
-                      },
-                    ],
+                    children: resultMainChildren,
                   },
                 ],
               };
@@ -654,7 +710,7 @@ export class AuthorSearchFactory {
     const now = new Date().toLocaleString();
 
     return `
-      <h1>${this.escapeHtml(getString("search-results-title"))}</h1>
+      <h1>${this.escapeHtml(getString("author-search-window-title"))}</h1>
       <p><strong>${this.escapeHtml(getString("title-column"))}:</strong> ${sourceTitle}</p>
       <p><strong>Date:</strong> ${this.escapeHtml(now)}</p>
       <ol>
@@ -665,7 +721,13 @@ export class AuthorSearchFactory {
 
   private static formatResult(result: AuthorSearchResult): FormattedResult {
     const title = result.item.getField("title") || "无标题";
-    const authors = this.getItemAuthors(result.item) || result.matchedAuthors.join(", ");
+    const authors =
+      this.getItemAuthors(result.item) || result.matchedAuthors.join(", ");
+    const authorsHtml = this.getItemAuthorsHtml(
+      result.item,
+      result.matchedAuthors,
+    );
+    const matchedAuthors = result.matchedAuthors.join(", ");
     const year = this.extractYear(result.item.getField("date") || "");
     const journal = this.getDisplayPublication(result.item);
     const details = this.buildDetailsInfo(result.item, year);
@@ -682,6 +744,8 @@ export class AuthorSearchFactory {
     return {
       title,
       authors,
+      authorsHtml,
+      matchedAuthors,
       journal,
       year,
       details,
@@ -713,12 +777,43 @@ export class AuthorSearchFactory {
       .join(", ");
   }
 
+  private static getItemAuthorsHtml(
+    item: any,
+    matchedAuthors: string[],
+  ): string {
+    const matchedNames = new Set(
+      matchedAuthors.map((author) => this.normalizeAuthorName(author)),
+    );
+
+    return item
+      .getCreators()
+      .filter((creator: any) => creator)
+      .map((creator: any) => {
+        const name = this.formatCreatorName(creator);
+        if (!name) {
+          return "";
+        }
+
+        const escapedName = this.escapeHtml(name);
+        if (matchedNames.has(this.normalizeAuthorName(name))) {
+          return `<span class="item-author-highlight">${escapedName}</span>`;
+        }
+        return escapedName;
+      })
+      .filter(Boolean)
+      .join(", ");
+  }
+
   private static formatCreatorName(creator: any): string {
     if (creator.name) {
       return creator.name;
     }
 
     return `${creator.lastName || ""} ${creator.firstName || ""}`.trim();
+  }
+
+  private static normalizeAuthorName(name: string): string {
+    return name.toLowerCase().replace(/\s+/g, " ").trim();
   }
 
   private static getDisplayPublication(item: any): string {

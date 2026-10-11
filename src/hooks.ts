@@ -1,6 +1,10 @@
-import { AuthorSearchFactory, MatchingMode } from "./modules/authorSearch";
-import { getString, initLocale } from "./utils/locale";
-import { createZToolkit } from "./utils/ztoolkit";
+import { AuthorSearchFactory } from "./modules/authorSearch";
+import { initLocale } from "./utils/locale";
+import {
+  registerAuthorSearchMenu,
+  unregisterAuthorSearchMenus,
+  unregisterAuthorSearchWindow,
+} from "./utils/menu";
 
 declare const Zotero: any;
 declare const ztoolkit: any;
@@ -13,6 +17,8 @@ async function onStartup() {
     Zotero.uiReadyPromise,
   ]);
 
+  if (!addon.data.alive) return;
+
   initLocale();
 
   await Promise.all(
@@ -24,72 +30,34 @@ async function onStartup() {
 }
 
 async function onMainWindowLoad(win: any): Promise<void> {
-  // Create ztoolkit for every window
-  addon.data.ztoolkit = createZToolkit();
-
-  const popupWin = new ztoolkit.ProgressWindow(addon.data.config.addonName, {
-    closeOnClick: true,
-    closeTime: -1,
-  })
-    .createLine({
-      text: getString("startup-begin"),
-      type: "default",
-      progress: 0,
-    })
-    .show();
-
-  await Zotero.Promise.delay(1000);
-  popupWin.changeLine({
-    progress: 50,
-    text: `[50%] ${getString("startup-begin")}`,
-  });
-
-  // Register author search menu item
-  ztoolkit.Menu.register("item", {
-    tag: "menu",
-    label: getString("menuitem-label"),
-    children: [
-      {
-        tag: "menuitem",
-        label: getString("search-mode-flexible"),
-        commandListener: () =>
-          AuthorSearchFactory.searchAuthors(MatchingMode.Flexible),
-      },
-      {
-        tag: "menuitem",
-        label: getString("search-mode-strict"),
-        commandListener: () =>
-          AuthorSearchFactory.searchAuthors(MatchingMode.Strict),
-      },
-      {
-        tag: "menuitem",
-        label: getString("search-mode-surname"),
-        commandListener: () =>
-          AuthorSearchFactory.searchAuthors(MatchingMode.Surname),
-      },
-    ],
-  });
-
-  await Zotero.Promise.delay(1000);
-
-  popupWin.changeLine({
-    progress: 100,
-    text: `[100%] ${getString("startup-finish")}`,
-  });
-  popupWin.startCloseTimer(5000);
+  if (!addon.data.alive || win.closed) return;
+  registerAuthorSearchMenu(win);
 }
 
 async function onMainWindowUnload(win: Window): Promise<void> {
-  ztoolkit.unregisterAll();
-  addon.data.dialog?.window?.close();
+  try {
+    unregisterAuthorSearchWindow(win);
+  } finally {
+    AuthorSearchFactory.closeWindows(win);
+  }
 }
 
 function onShutdown(): void {
-  ztoolkit.unregisterAll();
-  addon.data.dialog?.window?.close();
-  // Remove addon object
+  // Stop pending searches from creating UI while the add-on is unloading.
   addon.data.alive = false;
-  delete Zotero[addon.data.config.addonInstance];
+  try {
+    unregisterAuthorSearchMenus();
+  } finally {
+    try {
+      AuthorSearchFactory.closeWindows();
+    } finally {
+      try {
+        ztoolkit.unregisterAll();
+      } finally {
+        delete Zotero[addon.data.config.addonInstance];
+      }
+    }
+  }
 }
 
 /**

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Author Search</title>
+    <link rel="stylesheet" href="results.css" />
+  </head>
+  <body>
+    <main class="search-results-container">
+      <header class="results-header">
+        <span id="results-heading"></span>
+        <div class="results-actions">
+          <button
+            id="copy-results"
+            class="dialog-button"
+            type="button"
+          ></button>
+          <button id="add-note" class="dialog-button" type="button"></button>
+          <button
+            id="save-collection"
+            class="dialog-button primary"
+            type="button"
+          ></button>
+          <button
+            id="close-results"
+            class="dialog-button"
+            type="button"
+          ></button>
+        </div>
+      </header>
+      <ol id="results-list" class="results-list"></ol>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+  </body>
+</html>

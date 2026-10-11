@@ -1,7 +1,7 @@
 {
-  "name": "zotero-plugin-template",
+  "name": "zotero-author-search",
   "type": "module",
-  "version": "1.1.0",
+  "version": "1.2.2",
   "description": "Zotero Author Search Plugin",
   "config": {
     "addonName": "Author Search",
@@ -12,13 +12,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/windingwind/zotero-plugin-template.git"
+    "url": "git+https://github.com/ustc-iontrap/Zotero-Author-Search.git"
   },
   "author": "windingwind",
   "bugs": {
-    "url": "https://github.com/windingwind/zotero-plugin-template/issues"
+    "url": "https://github.com/ustc-iontrap/Zotero-Author-Search/issues"
   },
-  "homepage": "https://github.com/windingwind/zotero-plugin-template#readme",
+  "homepage": "https://github.com/ustc-iontrap/Zotero-Author-Search",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "start": "zotero-plugin serve",
@@ -27,7 +27,9 @@
     "lint:fix": "prettier --write . && eslint . --fix",
     "release": "zotero-plugin release",
     "test": "zotero-plugin test",
-    "update-deps": "npm update --save"
+    "update-deps": "npm update --save",
+    "test:unit": "node scripts/test-menu.cjs && node scripts/test-window.cjs && node scripts/test-search-engine.cjs",
+    "pretest": "npm run build && node scripts/stage-package.mjs"
   },
   "dependencies": {
     "zotero-plugin-toolkit": "^5.1.0-beta.4"

@@ -30,6 +30,7 @@ export type FluentMessageId =
   | 'prefs-table-detail'
   | 'prefs-table-title'
   | 'prefs-title'
+  | 'read-only-library'
   | 'results-count'
   | 'save-as-collection'
   | 'save-collection-error'

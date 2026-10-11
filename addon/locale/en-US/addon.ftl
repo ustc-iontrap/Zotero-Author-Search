@@ -42,3 +42,5 @@ copy-error = Failed to copy results to the clipboard
 add-note-success = Created a child note under the source item with {$count} results
 add-note-error = Failed to create the child note
 open-item-link = Open Item
+
+read-only-library = This library is read-only; notes and collections cannot be created

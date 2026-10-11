@@ -6,6 +6,9 @@ node_modules/
 build/
 dist/
 
+# Local V1.1 source reference (not part of the maintained source tree)
+Zotero-Author-Search-1.1.0/
+
 # TypeScript incremental cache
 *.tsbuildinfo
 

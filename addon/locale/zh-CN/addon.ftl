@@ -42,3 +42,5 @@ copy-error = 复制到剪贴板失败
 add-note-success = 已在原条目下创建笔记，保存 {$count} 条结果
 add-note-error = 创建笔记失败
 open-item-link = 打开条目
+
+read-only-library = 此文献库为只读，无法创建笔记或集合

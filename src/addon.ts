@@ -1,6 +1,7 @@
 import { config } from "../package.json";
 import { ColumnOptions, DialogHelper } from "zotero-plugin-toolkit";
 import hooks from "./hooks";
+import { AuthorSearchFactory, MatchingMode } from "./modules/authorSearch";
 import { createZToolkit } from "./utils/ztoolkit";
 
 class Addon {
@@ -35,7 +36,7 @@ class Addon {
       ztoolkit: createZToolkit(),
     };
     this.hooks = hooks;
-    this.api = {};
+    this.api = { AuthorSearchFactory, MatchingMode };
   }
 }
 
